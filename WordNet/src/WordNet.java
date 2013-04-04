@@ -10,50 +10,61 @@ import java.util.*;
 public class WordNet {
 
     private Digraph hDigraph;
-    private List<List<String>> synList;
-    private Set<String> nounsSet;
+    private ST<String, List<String>> synSet;
 
     // constructor takes the name of the two input files
     public WordNet(String synsets, String hypernyms) {
-        boolean isRooted = false;
-        nounsSet = new TreeSet<String>();
 
+        int verticesWithZeroOutDegree = 0;
         //read synsets file and fill array
         In synIn = new In(synsets);
-        synList = new ArrayList<List<String>>();
+        synSet = new ST<String, List<String>>();
+        int index = 0;
         while (synIn.hasNextLine()) {
             List<String> params = Arrays.asList(synIn.readLine().split("\\,"));
-            synList.add(params);
-            nounsSet.addAll(Arrays.asList(params.get(1).split("\\s+")));
+            for (String key : params.get(1).split("\\s+")) {
+                if (synSet.contains(key))
+                    synSet.get(key).add(params.get(0));
+                else {
+                    List<String> values = new ArrayList<String>();
+                    values.add(String.valueOf(index));
+                    values.add(params.get(1));
+                    values.add(params.get(0));
+                    synSet.put(key,values);
+                }
+            }
+            index++;
         }
 
         //read hypernums file and create Digraph
         In hypIn = new In(hypernyms);
-        hDigraph = new Digraph(synList.size());
+        hDigraph = new Digraph(synSet.size());
         while (hypIn.hasNextLine()) {
             List<String> connectedVertices = Arrays.asList(hypIn.readLine().split("\\,"));
-            if (connectedVertices.size() == 1)
-                isRooted = true;
-
             for (int i=1; i<connectedVertices.size(); i++) {
                 hDigraph.addEdge(Integer.parseInt(connectedVertices.get(0)),Integer.parseInt(connectedVertices.get(i)));
             }
         }
 
-        if (!isRooted)
+
+        DirectedCycle dc = new DirectedCycle(hDigraph);
+        for (int v=0; v<hDigraph.V();v++) {
+            if (!hDigraph.adj(v).iterator().hasNext()){
+                verticesWithZeroOutDegree++;
+            }
+        }
+        if (!dc.hasCycle() && verticesWithZeroOutDegree !=1)
             throw new IllegalArgumentException();
     }
 
-
-
     // returns all WordNet nouns
     public Iterable<String> nouns() {
-        return nounsSet;
+        return synSet.keys();
     }
 
     // is the word a WordNet noun?
     public boolean isNoun(String word) {
-        return nounsSet.contains(word);
+        return synSet.contains(word);
     }
 
     // distance between nounA and nounB (defined below)
@@ -64,25 +75,17 @@ public class WordNet {
         int nounBId = -1;
 
         //find ids for nounA and nounB inside list of synset
-        List<Integer> nounASynsetIds = new ArrayList<Integer>();
-        List<Integer> nounBSynsetIds = new ArrayList<Integer>();
-        for (int i=0; i<synList.size(); i++) {
-            List<String> synset = Arrays.asList(synList.get(i).get(1).split("\\s+"));
-            for (String s : synset) {
-                if (s.equals(nounA))
-                    nounASynsetIds.add(i);
-                if (s.equals(nounB))
-                    nounBSynsetIds.add(i);
-            }
-        }
+        List<String> nounASynsetValues = synSet.get(nounA);
+        List<String> nounBSynsetValues = synSet.get(nounB);
 
-//        System.out.println("Ids for "+nounA+": ");
-//        for (Integer a:nounASynsetIds)
-//            System.out.print(a + " ");
-//        System.out.println("");
-//        System.out.println("Ids for "+nounB+": ");
-//        for (Integer b:nounBSynsetIds)
-//            System.out.print(b+" ");
+        List<Integer> nounASynsetIds = new ArrayList<Integer>();
+        for (int a=2;a<nounASynsetValues.size();a++) {
+            nounASynsetIds.add(Integer.parseInt(nounASynsetValues.get(a)));
+        }
+        List<Integer> nounBSynsetIds = new ArrayList<Integer>();
+        for (int a=2;a<nounBSynsetValues.size();a++) {
+            nounBSynsetIds.add(Integer.parseInt(nounBSynsetValues.get(a)));
+        }
 
         SAP sap = new SAP(hDigraph);
         int distance;
@@ -94,8 +97,6 @@ public class WordNet {
             else
                 distance = sap.length(nounBSynsetIds, nounASynsetIds);
         }
-//        System.out.println("");
-//        System.out.println("Distance between "+nounA+" and "+nounB+":"+distance);
         return distance;
     }
 
@@ -105,20 +106,17 @@ public class WordNet {
         if (!isNoun(nounA) || !isNoun(nounB))
             throw new IllegalArgumentException();
 
-        int nounAId = -1;
-        int nounBId = -1;
-
         //find ids for nounA and nounB inside list of synset
+        List<String> nounASynsetValues = synSet.get(nounA);
+        List<String> nounBSynsetValues = synSet.get(nounB);
+
         List<Integer> nounASynsetIds = new ArrayList<Integer>();
+        for (int a=2;a<nounASynsetValues.size();a++) {
+            nounASynsetIds.add(Integer.parseInt(nounASynsetValues.get(a)));
+        }
         List<Integer> nounBSynsetIds = new ArrayList<Integer>();
-        for (int i=0; i<synList.size(); i++) {
-            List<String> synset = Arrays.asList(synList.get(i).get(1).split("\\s+"));
-            for (String s : synset) {
-                if (s.equals(nounA))
-                    nounASynsetIds.add(i);
-                if (s.equals(nounB))
-                    nounBSynsetIds.add(i);
-            }
+        for (int a=2;a<nounBSynsetValues.size();a++) {
+            nounBSynsetIds.add(Integer.parseInt(nounBSynsetValues.get(a)));
         }
 
         SAP sap = new SAP(hDigraph);
@@ -129,20 +127,46 @@ public class WordNet {
             ancestor = sap.ancestor(nounASynsetIds, nounBSynsetIds);
         }
 
-        return synList.get(ancestor).get(1);
+        for (String s:synSet.keys()) {
+            if (Integer.parseInt(synSet.get(s).get(0)) == ancestor) {
+                return synSet.get(s).get(1);
+            }
+        }
+
+        return null;
     }
 
     // for unit testing of this class
     public static void main(String[] args) {
-        WordNet wn = new WordNet("testData/synsets.txt","testData/hypernyms.txt");
-        System.out.println("Digraph size:" + wn.hDigraph.V());
-        System.out.println("List size:" + wn.synList.size());
-        System.out.println("Set of nouns size:" + wn.nounsSet.size());
-        System.out.println("***Testing if nouns exist***");
-        System.out.println("Checking: 'shoulder_holster'. Expected: true. Actual: " + wn.isNoun("shoulder_holster"));
-        System.out.println("Checking: 'fashioning'. Expected: true. Actual: " + wn.isNoun("fashioning"));
-        System.out.println("Checking: 'wheatfield'. Expected: true. Actual: " + wn.isNoun("wheatfield"));
-        System.out.println("Checking: 'hipopotam'. Expected: false. Actual: " + wn.isNoun("hipopotam"));
-        System.out.println("Checking: 'vkiriushkin'. Expected: false. Actual: " + wn.isNoun("vkiriushkin"));
+        WordNet wn = new WordNet("testData/synsets3.txt","testData/hypernymsInvalidTwoRoots.txt");
+        Stopwatch sw = new Stopwatch();
+//        System.out.println("Digraph size:" + wn.hDigraph.V());
+//        System.out.println("List size:" + wn.synSet.size());
+//        System.out.println("Set of nouns size:" + wn.nounsSet.size());
+//        System.out.println("***Testing if nouns exist***");
+//        System.out.println("Checking: 'shoulder_holster'. Expected: true. Actual: " + wn.isNoun("shoulder_holster"));
+//        System.out.println("Checking: 'fashioning'. Expected: true. Actual: " + wn.isNoun("fashioning"));
+//        System.out.println("Checking: 'wheatfield'. Expected: true. Actual: " + wn.isNoun("wheatfield"));
+//        System.out.println("Checking: 'hipopotam'. Expected: false. Actual: " + wn.isNoun("hipopotam"));
+//        System.out.println("Checking: 'vkiriushkin'. Expected: false. Actual: " + wn.isNoun("vkiriushkin"));
+//        for (int i=0; i<200; i++) {
+//            int random1 = StdRandom.uniform(0,wn.hDigraph.V());
+//            int random2 = StdRandom.uniform(0,wn.hDigraph.V());
+//            List<String> keys = new ArrayList<String>();
+//            for (String s: wn.synSet.keys())
+//                keys.add(s);
+//            String nounA = keys.get(random1);
+//            String nounB = keys.get(random2);
+//            wn.distance(nounA,nounB);
+//            wn.sap(nounA,nounB);
+////            System.out.println("Distance between "+nounA+" and "+nounB+":"+wn.distance(nounA,nounB));
+//        }
+
+        String nounA = "bola_tie";
+        String nounB = "Wiesenthal";
+
+        System.out.println(wn.distance(nounA,nounB));
+        System.out.println(wn.sap(nounA,nounB));
+        System.out.println(sw.elapsedTime());
     }
 }

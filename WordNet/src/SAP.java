@@ -1,5 +1,4 @@
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 /**
  * Created with IntelliJ IDEA.
@@ -12,12 +11,13 @@ public class SAP {
 
     private Digraph dg;
     private BreadthFirstDirectedPaths bfs;
+    private BreadthFirstDirectedPaths bfsR;
     private Integer vertexAmongSet;
     private Integer vertexAmongMultipleSet;
 
     // constructor takes a digraph (not necessarily a DAG)
     public SAP(Digraph G) {
-        this.dg = G;
+        this.dg = new Digraph(G);
     }
 
     // length of shortest ancestral path between v and w; -1 if no such path
@@ -25,42 +25,27 @@ public class SAP {
         if (v < 0 || v >= this.dg.V() || w < 0 || w >= this.dg.V()) throw new IndexOutOfBoundsException();
         if (v == w)
             return 0;
-        int temp = -1;
-        bfs = new BreadthFirstDirectedPaths(this.dg,v);
-        if (bfs.distTo(w) != Integer.MAX_VALUE) {
-            vertexAmongSet = w;
-            temp = bfs.distTo(w);
-        }
-        List<Integer> ancestors = new ArrayList<Integer>();
-        checkAdjecentSingle(ancestors, w);
-        if (ancestors.size() > 0) {
-            int minLength = bfs.distTo(ancestors.get(0));
-            vertexAmongSet = ancestors.get(0);
-            for (int i=1; i<ancestors.size(); i++) {
-                if (bfs.distTo(ancestors.get(i)) < minLength) {
-                    vertexAmongSet = ancestors.get(i);
+
+        bfs = new BreadthFirstDirectedPaths(this.dg, v);
+        bfsR = new BreadthFirstDirectedPaths(this.dg, w);
+
+        int minLength = -1;
+        for (int i=0; i<dg.V(); i++) {
+            if (bfs.hasPathTo(i) && bfsR.hasPathTo(i)) {
+                if (minLength == -1) {
+                    minLength = bfs.distTo(i) + bfsR.distTo(i);
+                    vertexAmongSet = i;
+                }
+                else {
+                    if (bfs.distTo(i) + bfsR.distTo(i) < minLength){
+                        minLength = bfs.distTo(i) + bfsR.distTo(i);
+                        vertexAmongSet = i;
+                    }
                 }
             }
-            int fromSource =  bfs.distTo(vertexAmongSet);
-            bfs = new BreadthFirstDirectedPaths(this.dg,w);
-            int fromRequest = bfs.distTo(vertexAmongSet);
-            if (temp != -1 && temp < (fromSource + fromRequest))
-                return temp;
-            else
-                return fromSource + fromRequest;
-        } else {
-            return -1;
         }
-    }
 
-    private void checkAdjecentSingle(List<Integer> ancestors, int w) {
-        for (Integer adjVertex : this.dg.adj(w)) {
-            if (bfs.distTo(adjVertex) != Integer.MAX_VALUE) {
-                ancestors.add(adjVertex);
-            } else {
-                checkAdjecentSingle(ancestors, adjVertex);
-            }
-        }
+        return minLength;
     }
 
     // a common ancestor of v and w that participates in a shortest ancestral path; -1 if no such path
@@ -93,43 +78,25 @@ public class SAP {
             }
         }
 
-        for (Integer d:w){
-            if (bfs.distTo(d) != Integer.MAX_VALUE) {
-                vertexAmongMultipleSet = d;
-                return bfs.distTo(d);
-            }
-        }
-
         bfs = new BreadthFirstDirectedPaths(this.dg,v);
-        BreadthFirstDirectedPaths secondBfs = new BreadthFirstDirectedPaths(this.dg, w);
-        List<Integer> ancestors = new ArrayList<Integer>();
-        for (Integer oneOfMultiple : w) {
-            checkAdjecentMultiple(ancestors, oneOfMultiple);
-        }
-        if (ancestors.size() > 0) {
-            int minLength = bfs.distTo(ancestors.get(0)) +secondBfs.distTo(ancestors.get(0));
-            vertexAmongMultipleSet = ancestors.get(0);
-            for (int i=1; i<ancestors.size(); i++) {
-                if ( (bfs.distTo(ancestors.get(i)) + secondBfs.distTo(ancestors.get(i))) < minLength) {
-                    vertexAmongMultipleSet = ancestors.get(i);
+        bfsR = new BreadthFirstDirectedPaths(this.dg, w);
+
+        int minLength = -1;
+        for (int i=0; i<dg.V(); i++) {
+            if (bfs.hasPathTo(i) && bfsR.hasPathTo(i)) {
+                if (minLength == -1) {
+                    minLength = bfs.distTo(i) + bfsR.distTo(i);
+                    vertexAmongMultipleSet = i;
+                }
+                else {
+                    if (bfs.distTo(i) + bfsR.distTo(i) < minLength){
+                        minLength = bfs.distTo(i) + bfsR.distTo(i);
+                        vertexAmongMultipleSet = i;
+                    }
                 }
             }
-            int fromSource =  bfs.distTo(vertexAmongMultipleSet);
-            int fromRequest = secondBfs.distTo(vertexAmongMultipleSet);
-            return fromSource + fromRequest;
-        } else {
-            return -1;
         }
-    }
-
-    private void checkAdjecentMultiple(List<Integer> ancestors, int w) {
-        for (Integer adjVertex : this.dg.adj(w)) {
-            if (bfs.distTo(adjVertex) != Integer.MAX_VALUE) {
-                ancestors.add(adjVertex);
-            } else {
-                checkAdjecentMultiple(ancestors, adjVertex);
-            }
-        }
+        return minLength;
     }
 
     // a common ancestor that participates in shortest ancestral path; -1 if no such path
@@ -157,24 +124,24 @@ public class SAP {
 
     // for unit testing of this class (such as the one below)
     public static void main(String[] args) {
-        In in = new In("testData/digraph2.txt");
+        In in = new In("testData/digraph3.txt");
         Digraph G = new Digraph(in);
         SAP sap = new SAP(G);
-//        List<Integer> v = new ArrayList<Integer>();
-//        v.add(7);
-//        v.add(8);
-//        List<Integer> w = new ArrayList<Integer>();
-//        w.add(11);
-//        w.add(12);
-//        int length = sap.length(v,w);
-//        int ancestor = sap.ancestor(v, w);
-//        StdOut.printf("length = %d, ancestor = %d\n", length, ancestor);
-        while (!StdIn.isEmpty()) {
-            int v = StdIn.readInt();
-            int w = StdIn.readInt();
-            int length   = sap.length(v, w);
-            int ancestor = sap.ancestor(v, w);
-            StdOut.printf("length = %d, ancestor = %d\n", length, ancestor);
-        }
+        List<Integer> v = new ArrayList<Integer>();
+        v.add(13);
+        v.add(14);
+        List<Integer> w = new ArrayList<Integer>();
+        w.add(7);
+        w.add(9);
+        int length = sap.length(v,w);
+        int ancestor = sap.ancestor(v, w);
+        StdOut.printf("length = %d, ancestor = %d\n", length, ancestor);
+//        while (!StdIn.isEmpty()) {
+//            int v = StdIn.readInt();
+//            int w = StdIn.readInt();
+//            int length   = sap.length(v, w);
+//            int ancestor = sap.ancestor(v, w);
+//            StdOut.printf("length = %d, ancestor = %d\n", length, ancestor);
+//        }
     }
 }
